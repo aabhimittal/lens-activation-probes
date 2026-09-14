@@ -1,0 +1,27 @@
+# Second real model, different family and 4x smaller, CPU-only, ~5 min.
+# Exists to test whether the degradation ordering is a property of
+# quantization or an artifact of one network.
+backend: hf
+backend_kwargs:
+  model_id: HuggingFaceTB/SmolLM2-135M-Instruct
+  device: cpu
+  dtype: float32
+  batch_size: 24
+  max_len: 256
+# No verified-hallucination task here: a 135M model answers closed-book
+# TriviaQA correctly a few percent of the time, so balancing leaves too few
+# examples to say anything. The two templated tasks are identical across
+# models, which is what makes the cross-model comparison meaningful.
+tasks:
+  - refusal
+  - injection
+layers: [7, 15, 22, 26]        # 25/50/75/90% depth of 30 blocks
+probes: [logistic, meandiff]
+specs: [fp16, w8-g128, w4-g128, w4-g32, nf4-g64, w3-g128, kv8, kv4, kv3, w4-g128+kv4]
+n_examples: 400
+pooling: last
+test_frac: 0.3
+split_by_template: true
+calib_n: 64
+bootstrap: 200
+seed: 0

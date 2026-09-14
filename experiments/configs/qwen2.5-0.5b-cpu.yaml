@@ -1,0 +1,26 @@
+# Real pretrained model, CPU-only, ~15 min on 4 cores.
+# The hallucination task here uses VERIFIED labels (the model's own graded
+# answers), built first with:
+#   lens label --model Qwen/Qwen2.5-0.5B-Instruct --dtype float32 --device cpu \
+#              --n 1200 --out data/hallucination_qwen2.5-0.5b.jsonl
+backend: hf
+backend_kwargs:
+  model_id: Qwen/Qwen2.5-0.5B-Instruct
+  device: cpu
+  dtype: float32
+  batch_size: 24
+  max_len: 256
+tasks:
+  - data/hallucination_qwen2.5-0.5b.jsonl
+  - refusal
+  - injection
+layers: [6, 12, 18, 21]        # 25/50/75/90% depth of 24 blocks
+probes: [logistic, meandiff]
+specs: [fp16, w8-g128, w4-g128, w4-g32, nf4-g64, w3-g128, kv8, kv4, kv3, w4-g128+kv4]
+n_examples: 400
+pooling: last
+test_frac: 0.3
+split_by_template: true
+calib_n: 64
+bootstrap: 200
+seed: 0

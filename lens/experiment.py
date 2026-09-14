@@ -102,6 +102,7 @@ def run_sweep(cfg: SweepConfig, out_dir: Optional[str] = None, verbose: bool = T
                     p_q = probe.predict_proba(Xte_q)
                     rep = classification_report(te.labels, p_q, cfg.threshold)
                     row = {
+                        "model": backend.name,
                         "task": task, "layer": int(layer), "probe": kind,
                         "spec": spec.name, "spec_tags": list(spec.tags),
                         "baseline_auroc": base_rep["auroc"],
