@@ -1,0 +1,14 @@
+# Full CPU-only sweep. No downloads. ~2 minutes on 4 cores.
+backend: synthetic
+backend_kwargs: {n_layers: 8, d_model: 256, n_heads: 8, vocab: 2048, d_ff: 512, seed: 0}
+tasks: [refusal, hallucination, injection]
+layers: null            # null -> quartile depths
+probes: [logistic, meandiff]
+specs: null             # null -> all STANDARD_SPECS
+n_examples: 400
+pooling: last
+test_frac: 0.3
+split_by_template: true
+calib_n: 64
+bootstrap: 200
+seed: 0
