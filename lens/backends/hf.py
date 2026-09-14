@@ -85,21 +85,39 @@ class HFBackend:
                 if isinstance(mod, nn.Linear):
                     yield f"{i}.{name}", mod
 
-    def apply_weight_quant(self, spec: QuantSpec):
-        if self._applied == spec.name:
-            return
-        self.restore_weights()
-        if spec.weight_bits is None:
-            self._applied = spec.name
+    def _ensure_backup(self):
+        """Snapshot the FP weights once. They never change, so re-cloning them
+        for every serving config is pure waste -- and on a real-model sweep the
+        backup/restore traffic, not the forward pass, is what dominates."""
+        if self._fp_backup:
             return
         with self.torch.no_grad():
             for key, mod in self._linear_modules():
-                self._fp_backup[key] = mod.weight.detach().to("cpu").clone()
-                w = mod.weight.data.float()
+                self._fp_backup[key] = mod.weight.detach().to("cpu", copy=True)
+
+    def apply_weight_quant(self, spec: QuantSpec):
+        """Quantize *from the pristine snapshot*, not from whatever is currently
+        loaded, so switching between configs needs one pass instead of a restore
+        pass followed by a re-clone."""
+        if self._applied == spec.name:
+            return
+        if spec.weight_bits is None:
+            self.restore_weights()
+            self._applied = spec.name
+            return
+        self._ensure_backup()
+        with self.torch.no_grad():
+            for key, mod in self._linear_modules():
+                # Quantize on the module's own device: on GPU this keeps the
+                # arithmetic there rather than round-tripping through host.
+                w = self._fp_backup[key].to(mod.weight.device, self.torch.float32)
                 mod.weight.data.copy_(spec.quant_weight(w).to(mod.weight.dtype))
         self._applied = spec.name
 
-    def restore_weights(self):
+    def restore_weights(self, drop: bool = False):
+        """Put the FP weights back. The snapshot is kept by default (the next
+        config will need it); pass drop=True to hand the host memory back when
+        no more quantized configs are coming."""
         if not self._fp_backup:
             self._applied = None
             return
@@ -108,7 +126,8 @@ class HFBackend:
                 if key in self._fp_backup:
                     mod.weight.data.copy_(self._fp_backup[key].to(mod.weight.device,
                                                                  mod.weight.dtype))
-        self._fp_backup.clear()
+        if drop:
+            self._fp_backup.clear()
         self._applied = None
 
     # ------------------------------------------------------------- taps ----

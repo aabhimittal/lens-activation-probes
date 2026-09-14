@@ -1,0 +1,9 @@
+{
+  "n_generated": 1200,
+  "raw_error_rate": 0.7816666666666666,
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "source": "trivia_qa/rc.nocontext/validation",
+  "max_new_tokens": 16,
+  "balanced": true,
+  "n_kept": 524
+}

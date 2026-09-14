@@ -73,3 +73,18 @@ def test_cli_sweep_runs(tmp_path):
                  "--specs", "fp16", "kv4", "--probes", "meandiff",
                  "--layers", "1", "--n-examples", "100", "--out", str(out)]) == 0
     assert (out / "report.md").exists() and (out / "results.jsonl").exists()
+
+
+def test_rows_record_the_model_so_results_can_be_merged():
+    rows = run_sweep(cfg(), verbose=False)
+    assert {r["model"] for r in rows} == {"synthetic"}
+
+
+def test_model_compare_table_appears_only_with_two_models():
+    from lens.report import model_compare_table
+    rows = run_sweep(cfg(), verbose=False)
+    assert model_compare_table(rows) == ""          # one model: nothing to compare
+    other = [{**r, "model": "other"} for r in rows]
+    table = model_compare_table(rows + other)
+    assert "synthetic" in table and "other" in table
+    assert "w4-g128" in table

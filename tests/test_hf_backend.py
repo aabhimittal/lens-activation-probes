@@ -77,3 +77,28 @@ def test_sweep_runs_on_hf_backend(be):
         specs=["fp16", "kv4"], n_examples=40, calib_n=16, bootstrap=20), verbose=False)
     assert len(rows) == 2
     assert [r for r in rows if r["spec"] == "fp16"][0]["delta_auroc"] == 0.0
+
+
+def test_config_switches_never_compound(be):
+    """w4 applied after w3 must quantize the ORIGINAL weights, not the 3-bit
+    ones. Quantizing an already-quantized tensor is silent and would make every
+    row of a sweep depend on the order the configs happened to run in."""
+    L = be.n_layers - 1
+    first = be.activations(PROMPTS, [L], SPECS_BY_NAME["w4-g128"])[L]
+    be.activations(PROMPTS, [L], SPECS_BY_NAME["w3-g128"])
+    be.activations(PROMPTS, [L], SPECS_BY_NAME["fp16"])
+    again = be.activations(PROMPTS, [L], SPECS_BY_NAME["w4-g128"])[L]
+    assert np.allclose(first, again, atol=1e-5)
+
+
+def test_snapshot_is_taken_once_and_reused(be):
+    be.restore_weights(drop=True)
+    assert not be._fp_backup
+    be.activations(PROMPTS, [0], SPECS_BY_NAME["w4-g128"])
+    snapshot = {k: v.clone() for k, v in be._fp_backup.items()}
+    assert snapshot, "no FP snapshot was taken"
+    be.activations(PROMPTS, [0], SPECS_BY_NAME["w3-g128"])
+    # The snapshot must still hold FP weights after a second config, not the
+    # quantized ones that are currently loaded in the model.
+    for k, v in snapshot.items():
+        assert np.allclose(v.numpy(), be._fp_backup[k].numpy())

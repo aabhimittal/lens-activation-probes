@@ -48,6 +48,45 @@ alert volume quietly doubles.
 `match` is the one to deploy: no labels, one offline pass, and it folds into
 `(w, b)` so it costs nothing at run time.
 
+## Verified hallucination labels
+
+The bundled `hallucination` task is a prompt-level proxy: it labels questions
+that presuppose a non-existent entity. `lens label` replaces it with the label
+the question deserves.
+
+1. Sample real closed-book questions (TriviaQA `rc.nocontext`, which ships
+   normalized answer aliases).
+2. Greedy-decode an answer **on the FP16 reference stack**.
+3. Grade it: label 1 if no gold alias appears in the normalized output.
+4. Balance the classes by subsampling, and report the true base rate.
+
+The probe then predicts, from the residual stream at the **last prompt token**
+-- before a single answer token exists -- whether this model is about to get it
+wrong. That is a genuine forward-looking signal rather than a property of the
+prompt's surface form.
+
+Three design choices worth defending:
+
+* **Labels are generated once, on FP16, and then frozen.** Regenerating them per
+  serving config would let the target move with the thing being measured, and
+  ΔAUROC would become uninterpretable. The quantized stacks are scored against
+  the reference model's behaviour.
+* **Grading is lenient** (substring match against any alias). A small model
+  answers in a sentence, so exact match would label nearly everything wrong and
+  the task would collapse into "did the model emit a bare noun phrase". Lenient
+  matching over-credits, which biases *against* finding probe signal -- the safe
+  direction to err in.
+* **Labels are model-specific.** A label set built against Qwen2.5-0.5B says
+  nothing about any other model. The file name records which model produced it,
+  and the `.meta.json` alongside records the base rate, the source split, and the
+  decode length.
+
+The honest limitation: small models are wrong most of the time, so balancing
+throws away most of the majority class and the usable set is much smaller than
+the number of questions asked. The base rate is reported rather than buried,
+because a probe trained on a balanced subsample of a 15%-accurate model is not
+measuring the same thing as one trained on a balanced sample of a strong model.
+
 ## Known weaknesses
 
 **Correlation, not causation.** A probe finds a direction that *predicts* a

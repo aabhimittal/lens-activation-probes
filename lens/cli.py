@@ -46,7 +46,7 @@ def cmd_sweep(a) -> int:
 
 
 def cmd_report(a) -> int:
-    rows = load_results(a.results)
+    rows = [r for f in a.results for r in load_results(f)]
     md = build_report(rows, title=a.title)
     if a.out:
         Path(a.out).write_text(md + "\n")
@@ -89,6 +89,24 @@ def cmd_export(a) -> int:
     return 0
 
 
+def cmd_label(a) -> int:
+    """Generate answers with the FP16 reference stack, grade them, and write a
+    verified-label dataset the sweep can consume with --tasks <path>."""
+    from .backends import get_backend
+    from .generate import build_verified_hallucination, save_labeled
+
+    be = get_backend("hf", model_id=a.model, device=a.device, dtype=a.dtype,
+                     batch_size=a.batch_size, max_len=a.max_len)
+    ds, stats = build_verified_hallucination(be, n=a.n, seed=a.seed or 0,
+                                             max_new_tokens=a.max_new_tokens,
+                                             balance=not a.no_balance,
+                                             prompt_style=a.prompt_style)
+    p = save_labeled(ds, stats, a.out)
+    print(json.dumps(stats, indent=2))
+    print(f"wrote {p} ({len(ds)} examples) and {p.with_suffix('.meta.json')}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser("lens", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -112,7 +130,7 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_sweep)
 
     r = sub.add_parser("report", help="rebuild markdown from results.jsonl")
-    r.add_argument("results")
+    r.add_argument("results", nargs="+", help="one or more results.jsonl to merge")
     r.add_argument("--out")
     r.add_argument("--title", default="LENS sweep")
     r.set_defaults(fn=cmd_report)
@@ -121,6 +139,21 @@ def main(argv=None) -> int:
     common(e)
     e.add_argument("--bundle", default="artifacts/probe")
     e.set_defaults(fn=cmd_export)
+
+    l = sub.add_parser("label", help="build verified hallucination labels for a model")
+    l.add_argument("--model", required=True)
+    l.add_argument("--out", default="data/hallucination_verified.jsonl")
+    l.add_argument("--n", type=int, default=800, help="questions to sample before balancing")
+    l.add_argument("--max-new-tokens", dest="max_new_tokens", type=int, default=16)
+    l.add_argument("--prompt-style", dest="prompt_style", default="auto",
+                   choices=["auto", "chat", "plain"])
+    l.add_argument("--device", default="auto")
+    l.add_argument("--dtype", default="auto")
+    l.add_argument("--max-len", dest="max_len", type=int, default=512)
+    l.add_argument("--batch-size", dest="batch_size", type=int, default=16)
+    l.add_argument("--no-balance", action="store_true")
+    l.add_argument("--seed", type=int, default=0)
+    l.set_defaults(fn=cmd_label)
 
     a = ap.parse_args(argv)
     return a.fn(a)

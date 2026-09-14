@@ -119,6 +119,26 @@ def headline(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def model_compare_table(rows: list[dict], probe: str = "logistic") -> str:
+    """Same serving config, different models. The question this answers is
+    whether the degradation ordering is a property of quantization or an
+    artifact of one model."""
+    have = sorted({r.get("model", "?") for r in rows})
+    if len(have) < 2:
+        return ""
+    agg = aggregate([r for r in rows if r["probe"] == probe], keys=("model", "spec"))
+    idx = {(r["model"], r["spec"]): r for r in agg}
+    specs = sorted({r["spec"] for r in agg})
+    body = []
+    for s in specs:
+        row = [s]
+        for m in have:
+            c = idx.get((m, s))
+            row.append(f"{_fmt(c['delta_auroc'])} / {_fmt(c['score_flip_rate'])}" if c else "-")
+        body.append(row)
+    return _table(["serving config"] + [f"{m} (ΔAUROC / flip)" for m in have], body)
+
+
 def build_report(rows: list[dict], title: str = "LENS sweep") -> str:
     probes = sorted({r["probe"] for r in rows})
     parts = [f"# {title}", "",
@@ -129,6 +149,11 @@ def build_report(rows: list[dict], title: str = "LENS sweep") -> str:
         parts += [f"## {p} probe: degradation by serving config", "",
                   main_table(rows, p), "",
                   f"### {p}: ΔAUROC per task", "", per_task_table(rows, p), ""]
+    cross = model_compare_table(rows)
+    if cross:
+        parts += ["## Same configs, different models", "", cross, "",
+                  "If the ordering holds across models, it is a property of "
+                  "quantization rather than of one network.", ""]
     parts += ["## Layer sensitivity (mean over quantized configs)", "",
               layer_table(rows, probes[0]), "", "## Headline numbers", "",
               headline(rows), "",
