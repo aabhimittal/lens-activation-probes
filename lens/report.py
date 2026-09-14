@@ -137,5 +137,7 @@ def build_report(rows: list[dict], title: str = "LENS sweep") -> str:
               "`flip rate` is the fraction of test decisions that change at the "
               "deployed threshold -- the operational cost AUROC cannot see. `+match` is "
               "label-free affine recalibration on paired activations; `+refit` retrains "
-              "on quantized activations and is the upper bound on repair."]
+              "on quantized activations -- the strongest linear repair available, though "
+              "not guaranteed to help: a direction fit on degraded activations can be "
+              "worse than one transferred from clean ones."]
     return "\n".join(parts)

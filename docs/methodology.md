@@ -25,7 +25,9 @@ alert volume quietly doubles.
 
 * Probes are trained on FP16 activations only. Quantized activations are never
   seen at training time, except by the explicit `refit` repair, which exists to
-  bound how much is recoverable.
+  estimate how much is recoverable. Note it is an estimate, not a bound: refit
+  can score below plain transfer when the quantized activations carry less
+  signal than the FP16 direction can still extract from them.
 * Train/test splits are **template-disjoint** by default. A probe that memorizes
   a template gets no credit.
 * Every spec is run over the *same* prompts, so FP16 and quantized activations
@@ -41,7 +43,7 @@ alert volume quietly doubles.
 |---|---|---|---|
 | `match` | a few hundred *unlabeled* prompts run through both stacks | shift, scale, threshold, calibration | ranking, rotation |
 | `affine` | a few dozen *labeled* examples on the quantized stack | same as above, plus prior shift | ranking, rotation |
-| `refit` | full labeled training set + quantized extraction | everything a linear probe can fix | anything non-linear |
+| `refit` | full labeled training set + quantized extraction | rotation, rank loss -- the strongest linear repair | anything non-linear, and it can *lose* to plain transfer when the quantized activations are genuinely noisier |
 
 `match` is the one to deploy: no labels, one offline pass, and it folds into
 `(w, b)` so it costs nothing at run time.

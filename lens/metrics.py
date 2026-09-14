@@ -13,15 +13,14 @@ def auroc(y: np.ndarray, s: np.ndarray) -> float:
     if n0 == 0 or n1 == 0:
         return float("nan")
     order = np.argsort(s, kind="mergesort")
-    ranks = np.empty_like(order, dtype=np.float64)
-    sorted_s = s[order]
-    i = 0
-    while i < sorted_s.size:  # average ranks inside each tie block
-        j = i
-        while j + 1 < sorted_s.size and sorted_s[j + 1] == sorted_s[i]:
-            j += 1
-        ranks[order[i : j + 1]] = 0.5 * (i + j) + 1.0
-        i = j + 1
+    # Mid-ranks for tie blocks, vectorized: this sits in the inner loop of every
+    # bootstrap, so the obvious Python loop over tie blocks is too slow.
+    _, inv, counts = np.unique(s[order], return_inverse=True, return_counts=True)
+    stop = np.cumsum(counts)
+    start = stop - counts
+    mid = (start + stop - 1) / 2.0 + 1.0
+    ranks = np.empty(s.size, dtype=np.float64)
+    ranks[order] = mid[inv]
     return float((ranks[y == 1].sum() - n1 * (n1 + 1) / 2.0) / (n0 * n1))
 
 

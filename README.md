@@ -16,7 +16,7 @@ survives — and which repairs bring it back.
 ```bash
 pip install -e ".[dev]"        # numpy + pyyaml. No GPU, no downloads.
 ./scripts/run_demo.sh          # full sweep + a serving bundle, ~2 min on 4 cores
-pytest -q                      # 44 tests, including the end-to-end sweep
+pytest -q                      # 45 tests, including the end-to-end sweep
 ```
 
 For a real model:
@@ -62,22 +62,60 @@ AUROC will conclude a probe is robust while its alert volume quietly doubles.
 
 <!-- RESULTS -->
 
+- Mean ΔAUROC across all quantized configs: **-0.005** (mean flip rate at the deployed threshold: **0.060**).
+- Worst single cell: `w3-g128` on `hallucination` layer 2 (meandiff), ΔAUROC **-0.134**.
+- Weight-only INT4 configs: mean ΔAUROC 0.000, mean flip rate 0.077.
+- KV-cache-only configs: mean ΔAUROC 0.002, mean flip rate 0.031.
+- 72/288 quantized cells show a ΔAUROC whose paired 95% bootstrap CI excludes zero; the rest are inside the noise floor.
+- Repairs: label-free affine matching cuts mean flip rate 0.060 -> 0.056; retraining on quantized activations moves mean AUROC 0.902 -> 0.908.
+
+Logistic probe, averaged over 3 tasks x 4 layers (`*` = paired bootstrap CI on the delta excludes zero):
+
+| serving config | AUROC fp16 | AUROC | ΔAUROC | act rel-L2 | score r | flip rate | ECE | ECE +match | flip +match | AUROC +refit |
+|---|---|---|---|---|---|---|---|---|---|---|
+| w4-g128+kv3 | 0.915 | 0.919 | 0.004 | 0.368 | 0.915 | 0.076 | 0.256 | 0.246 | 0.092 | 0.912 |
+| w4-g32 | 0.915 | 0.917 | 0.002 | 0.234 | 0.949 | 0.060 | 0.292 | 0.283 | 0.053 | 0.908 |
+| w8-g128 | 0.915 | 0.917 | 0.002 | 0.017 | 1.000 | 0.000 | 0.262 | 0.261 | 0.000 | 0.916 |
+| kv4 | 0.915 | 0.916 | 0.001 | 0.114 | 0.984 | 0.026 | 0.271 | 0.270 | 0.024 | 0.924 |
+| fp16 | 0.915 | 0.915 | 0.000 | 0.000 | 1.000 | 0.000 | 0.264 | 0.264 | 0.000 | 0.915 |
+| kv8 | 0.915 | 0.915 | 0.000 | 0.007 | 1.000 | 0.002 | 0.261 | 0.262 | 0.002 | 0.916 |
+| kv3 | 0.915 | 0.915 | -0.001 | 0.232 | 0.961 | 0.062 | 0.236 | 0.243 | 0.056 | 0.906 |
+| w8a8 | 0.915 | 0.914 | -0.001 | 0.030 | 0.999 | 0.004 | 0.263 | 0.261 | 0.000 | 0.914 |
+| w4-g128 | 0.915 | 0.912 | -0.003 | 0.284 | 0.922 | 0.072 | 0.262 | 0.251 | 0.083 | 0.922 |
+| w4-g128+kv8 | 0.915 | 0.911 | -0.004 | 0.284 | 0.921 | 0.072 | 0.261 | 0.253 | 0.085 | 0.922 |
+| w4-g128+kv4 | 0.915 | 0.906 | -0.009 | 0.304 | 0.927 | 0.072 | 0.264 | 0.251 | 0.084 | 0.909 |
+| nf4-g64 | 0.915 | 0.902 | -0.013 | 0.262 | 0.942 | 0.061 | 0.284 | 0.254 | 0.045 | 0.904 |
+| w3-g128 | 0.915 | 0.867 | -0.048* | 0.566 | 0.842 | 0.163 | 0.228 | 0.260 | 0.130 | 0.845 |
+
+<!-- /RESULTS -->
+
 Read `results/synthetic/report.md` for the full tables (per task, per layer, per
 probe family). The headline pattern, and the caveat that governs it:
 
 * **Ranking is robust; thresholds are not.** Through INT4 weights and a 4-bit KV
-  cache, ΔAUROC stays inside the noise floor, while several percent of decisions
-  flip at a fixed threshold. The operational risk is miscalibration, not
-  discrimination.
-* **3-bit is where it actually breaks.** `w3-g128` is the one config that
-  degrades ranking significantly, and it is also the one where affine
-  recalibration stops helping — the signature of rotation rather than shift.
-* **Weight quantization hurts the probe more than KV quantization** at matched
-  bit width, which is the opposite of the intuition that a coarse cache is the
-  scarier knob.
-* **The cheap repair is the label-free one.** Fitting two parameters `(a, c)` so
-  quantized logits reproduce FP16 logits on paired activations needs no labels,
-  one offline pass, and folds into `(w, b)` at zero run-time cost.
+  cache, ΔAUROC stays inside the noise floor (−0.009, paired CI includes zero),
+  while **7% of decisions flip** at a fixed threshold. The operational risk here
+  is miscalibration, not discrimination — and AUROC cannot see it.
+* **3-bit *weights* are where it actually breaks; 3-bit *cache* is not.**
+  `w3-g128` is the only config with a significant ΔAUROC (−0.048, CI excludes
+  zero) and 16% of decisions flipping. `kv3`, at the same nominal bit width,
+  costs −0.001 AUROC. Weight precision is the binding constraint; cache
+  precision is close to free for probes.
+* **Weight quantization hurts more than KV quantization at matched bit width**,
+  which inverts the usual intuition that a coarse cache is the scarier knob:
+  flip rate 0.072 (`w4-g128`) vs 0.026 (`kv4`), and 0.163 (`w3-g128`) vs 0.062
+  (`kv3`). Smaller groups help as expected: `w4-g32` flips 0.060 vs 0.072 for
+  `w4-g128`.
+* **Neither repair is a cure, and the honest version is worth stating.**
+  Label-free affine matching needs no labels and costs nothing at run time, but
+  it only moves mean flip rate 0.060 → 0.056, and at `w3-g128` it makes ECE
+  *worse* (0.228 → 0.260) — a signature that the drift there is rotation, not
+  shift, which is exactly what two parameters cannot fix. Refitting on quantized
+  activations is also **not** a reliable upper bound: at `w3-g128` it scores
+  0.845, *below* the 0.867 of the untouched FP16-trained probe, because a
+  direction fit on degraded activations can be worse than one transferred from
+  clean ones. The useful conclusion is that the fix for 3-bit weights is not to
+  patch the probe.
 
 These numbers come from an 8-layer, d=256 transformer, not a frontier model. The
 *pipeline* is what transfers; run `--model` for numbers that mean something about
@@ -103,7 +141,7 @@ serving numerics but not a specific kernel's accumulation order. See
 |---|---|---|---|
 | `match` | unlabeled prompts through both stacks | shift, scale, threshold, calibration | ranking, rotation |
 | `affine` | a few dozen labeled quantized examples | the above, plus prior shift | ranking, rotation |
-| `refit` | full labeled set + quantized extraction | anything linear | anything non-linear |
+| `refit` | full labeled set + quantized extraction | rotation, rank loss | anything non-linear; can lose to plain transfer at 3-bit |
 
 ## Shipping a probe
 
