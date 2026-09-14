@@ -163,6 +163,23 @@ def build_verified_hallucination(backend, n: int = 800, seed: int = 0,
     return ds, stats
 
 
+def cohens_kappa(y_ref: np.ndarray, y_q: np.ndarray) -> float:
+    """Chance-corrected agreement.
+
+    Raw agreement is untrustworthy here because the base rate is extreme. A
+    quantized model that gets *everything* wrong automatically agrees with the
+    FP16 labels on every question FP16 also got wrong -- which, at an 80% error
+    rate, is 80% agreement for a model that has been destroyed. Kappa subtracts
+    exactly that free credit.
+    """
+    y_ref = np.asarray(y_ref)
+    y_q = np.asarray(y_q)
+    po = float((y_ref == y_q).mean())
+    p1, q1 = float(y_ref.mean()), float(y_q.mean())
+    pe = p1 * q1 + (1 - p1) * (1 - q1)
+    return float((po - pe) / (1 - pe)) if pe < 1.0 else float("nan")
+
+
 def label_drift(backend, prompts: Sequence[str], aliases: Sequence[Sequence[str]],
                 specs, max_new_tokens: int = 16, verbose: bool = True) -> list[dict]:
     """How much does quantization change *which questions the model gets wrong*?
@@ -178,7 +195,8 @@ def label_drift(backend, prompts: Sequence[str], aliases: Sequence[Sequence[str]
     ref = generate_answers(backend, prompts, max_new_tokens)
     y_ref = np.array([0 if is_correct(a, al) else 1 for a, al in zip(ref, aliases)])
     out = [{"spec": "fp16", "error_rate": float(y_ref.mean()), "label_agreement": 1.0,
-            "answer_exact_match": 1.0, "n": int(y_ref.size)}]
+            "kappa": 1.0, "answer_exact_match": 1.0, "n": int(y_ref.size),
+            "kept_correct": int((y_ref == 0).sum()), "was_correct": int((y_ref == 0).sum())}]
     for spec in specs:
         if spec.is_baseline:
             continue
@@ -186,15 +204,21 @@ def label_drift(backend, prompts: Sequence[str], aliases: Sequence[Sequence[str]
         y = np.array([0 if is_correct(a, al) else 1 for a, al in zip(got, aliases)])
         rec = {"spec": spec.name, "error_rate": float(y.mean()),
                "label_agreement": float((y == y_ref).mean()),
+               "kappa": cohens_kappa(y_ref, y),
+               # Of the questions FP16 answered correctly, how many survive?
+               # This is the number an operator actually feels.
+               "was_correct": int((y_ref == 0).sum()),
+               "kept_correct": int(((y_ref == 0) & (y == 0)).sum()),
                "answer_exact_match": float(np.mean([a.strip() == b.strip()
                                                     for a, b in zip(got, ref)])),
                "n": int(y.size)}
         out.append(rec)
         if verbose:
             print(f"[drift] {spec.name}: error {rec['error_rate']:.3f} "
-                  f"(fp16 {y_ref.mean():.3f}), label agreement "
-                  f"{rec['label_agreement']:.3f}, identical answers "
-                  f"{rec['answer_exact_match']:.3f}")
+                  f"(fp16 {y_ref.mean():.3f}), agreement "
+                  f"{rec['label_agreement']:.3f} (kappa {rec['kappa']:.3f}), "
+                  f"kept {rec['kept_correct']}/{rec['was_correct']} correct answers, "
+                  f"identical answers {rec['answer_exact_match']:.3f}")
     backend.restore_weights(drop=True)
     return out
 

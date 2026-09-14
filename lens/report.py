@@ -119,6 +119,27 @@ def headline(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def task_summary_table(rows: list[dict]) -> str:
+    """Baseline AUROC per task, next to the degradation.
+
+    This table exists because of a trap the other tables hide: on a real model
+    the templated tasks sit at AUROC 1.000, and a saturated metric cannot fall.
+    Reporting "ΔAUROC ~ 0, therefore probes are robust" from a task at ceiling
+    is measuring nothing. The baseline column makes that visible instead of
+    letting it pass as a finding.
+    """
+    agg = aggregate(rows, keys=("task", "probe"))
+    body = []
+    for r in sorted(agg, key=lambda r: (r["task"], r["probe"])):
+        head = 1.0 - r["baseline_auroc"]
+        body.append([r["task"].split("/")[-1].replace(".jsonl", ""), r["probe"],
+                     _fmt(r["baseline_auroc"]), _fmt(head), _fmt(r["auroc"]),
+                     _fmt(r["delta_auroc"]), _fmt(r["score_flip_rate"]),
+                     _fmt(r["auroc_refit"])])
+    return _table(["task", "probe", "AUROC fp16", "headroom", "AUROC quantized",
+                   "ΔAUROC", "flip rate", "AUROC +refit"], body)
+
+
 def model_compare_table(rows: list[dict], probe: str = "logistic") -> str:
     """Same serving config, different models. The question this answers is
     whether the degradation ordering is a property of quantization or an
@@ -144,7 +165,11 @@ def build_report(rows: list[dict], title: str = "LENS sweep") -> str:
     parts = [f"# {title}", "",
              f"{len(rows)} rows | tasks: {', '.join(sorted({r['task'] for r in rows}))} "
              f"| layers: {sorted({r['layer'] for r in rows})} | probes: {', '.join(probes)}",
-             "", "## Probe families under quantization", "", probe_compare_table(rows), ""]
+             "", "## Per task: is there any headroom to lose?", "",
+             task_summary_table(rows), "",
+             "A task already at AUROC 1.000 cannot show degradation. Read every "
+             "ΔAUROC below against the headroom column.", "",
+             "## Probe families under quantization", "", probe_compare_table(rows), ""]
     for p in probes:
         parts += [f"## {p} probe: degradation by serving config", "",
                   main_table(rows, p), "",
