@@ -1,0 +1,21 @@
+# Real model sweep. Needs a GPU and ~10GB VRAM (weights stay FP16; quantization
+# is simulated, so memory is NOT reduced -- this measures accuracy, not speed).
+# Host RAM must also hold one FP copy of the linear weights for restoration.
+backend: hf
+backend_kwargs:
+  model_id: meta-llama/Llama-3.2-1B-Instruct
+  device: auto
+  dtype: bfloat16
+  batch_size: 8
+  max_len: 512
+tasks: [refusal, hallucination, injection]
+layers: [4, 8, 12, 14]
+probes: [logistic, meandiff]
+specs: [fp16, w8-g128, w4-g128, w4-g32, nf4-g64, kv8, kv4, kv3, w4-g128+kv4]
+n_examples: 800
+pooling: last
+test_frac: 0.3
+split_by_template: true
+calib_n: 128
+bootstrap: 500
+seed: 0

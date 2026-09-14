@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lens-activation-probes"
+version = "0.1.0"
+description = "Do activation probes survive quantized serving? Linear probes as serving-time metrics."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = ["numpy>=1.24", "pyyaml>=6.0"]
+
+[project.optional-dependencies]
+hf = ["torch>=2.1", "transformers>=4.40"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+lens = "lens.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["lens*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
