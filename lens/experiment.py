@@ -77,10 +77,18 @@ def run_sweep(cfg: SweepConfig, out_dir: Optional[str] = None, verbose: bool = T
         prompts = list(tr.texts) + list(te.texts)
         n_tr = len(tr)
         t0 = time.time()
-        acts = {s.name: backend.activations(prompts, layers, s, cfg.pooling) for s in specs}
+        acts = {}
+        for si, s in enumerate(specs, 1):
+            ts = time.time()
+            acts[s.name] = backend.activations(prompts, layers, s, cfg.pooling)
+            if verbose:
+                # Per-spec, not per-task: a real-model sweep spends tens of
+                # minutes here and a single line at the end is not observable.
+                print(f"[{task}] {si}/{len(specs)} {s.name}: "
+                      f"{len(prompts)} prompts in {time.time() - ts:.1f}s", flush=True)
         if verbose:
             print(f"[{task}] {len(prompts)} prompts x {len(specs)} specs "
-                  f"in {time.time() - t0:.1f}s")
+                  f"in {time.time() - t0:.1f}s", flush=True)
 
         rng = np.random.default_rng(cfg.seed)
         cal_idx = rng.choice(n_tr, size=min(cfg.calib_n, n_tr), replace=False)

@@ -195,7 +195,7 @@ def label_drift(backend, prompts: Sequence[str], aliases: Sequence[Sequence[str]
                   f"(fp16 {y_ref.mean():.3f}), label agreement "
                   f"{rec['label_agreement']:.3f}, identical answers "
                   f"{rec['answer_exact_match']:.3f}")
-    backend.restore_weights()
+    backend.restore_weights(drop=True)
     return out
 
 
