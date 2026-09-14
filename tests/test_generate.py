@@ -132,3 +132,17 @@ def test_label_drift_skips_the_baseline_spec(monkeypatch):
     rows = G.label_drift(be, ["p"] * 4, [["gold"]] * 4,
                          [SPECS_BY_NAME["fp16"], SPECS_BY_NAME["kv4"]], verbose=False)
     assert [r["spec"] for r in rows] == ["fp16", "kv4"]   # baseline appears once, not twice
+
+
+def test_kappa_discounts_the_free_credit_a_broken_model_gets():
+    """A model that answers everything wrong agrees with an 80%-wrong reference
+    on 80% of items. Raw agreement calls that good; kappa must not."""
+    ref = np.array([1] * 80 + [0] * 20)      # reference is wrong on 80
+    dead = np.ones(100, dtype=int)           # quantized model is wrong on all
+    assert (ref == dead).mean() == 0.8       # raw agreement looks respectable
+    assert abs(G.cohens_kappa(ref, dead)) < 1e-9   # kappa sees through it
+
+    assert G.cohens_kappa(ref, ref) == 1.0
+    mixed = ref.copy()
+    mixed[:10] = 0                           # 10 disagreements out of 100
+    assert 0.5 < G.cohens_kappa(ref, mixed) < 1.0

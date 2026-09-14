@@ -145,7 +145,9 @@ token, whether this model is about to get a TriviaQA question wrong.
 * **A probe can go below chance.** At `kv3` the FP16-trained probe scores
   **0.475** — worse than a coin flip — with the paired bootstrap CI excluding
   zero at every layer tested. Half of all decisions flip. This is not
-  "degradation"; the metric is inverted and actively misleading.
+  "degradation"; the metric is inverted and actively misleading. Read it with
+  the label-drift section below, though: at `kv3` the *model* is also destroyed,
+  so this row is a diagnostic, not an operational warning.
 * **The margin, not the AUROC, is the thing to watch.** 0.708 → 0.648 at
   `w4-g128` sounds mild. In terms of the above-chance margin that a probe
   actually trades on, it is 0.208 → 0.148: **29% of the signal gone** at a
@@ -158,6 +160,48 @@ token, whether this model is about to get a TriviaQA question wrong.
   calibrated, and ranking at chance. A confidently-calibrated useless probe is
   worse than an obviously broken one, because nothing on a dashboard looks
   wrong. Never accept ECE as the robustness metric.
+
+## Label drift: the model moves too
+
+The sweep freezes labels at FP16 so ΔAUROC isolates probe degradation. That is
+the right way to measure a probe, and it hides the other half of the problem: in
+production the **quantized** model is the one generating. If it fails on a
+different set of inputs, a perfectly robust probe still describes a system that
+no longer exists.
+
+Same 400 TriviaQA questions, answers regenerated under each config, graded
+identically (`scripts/measure_label_drift.py`):
+
+| serving config | error rate | label agreement | kappa | kept correct | identical answers |
+|---|---|---|---|---|---|
+| fp16 | 0.802 | — | — | 79/79 | — |
+| w4-g128 | 0.850 | 0.873 | 0.558 | 44/79 | 0.102 |
+| w4-g128+kv4 | 0.980 | 0.807 | 0.082 | 5/79 | 0.000 |
+| kv3 | 0.995 | 0.807 | 0.040 | 2/79 | 0.000 |
+
+* **Raw agreement lies when the base rate is extreme.** `kv3` shows 0.807
+  agreement, which looks tolerable until you notice the model is wrong on 99.5%
+  of questions: it agrees with FP16 on everything FP16 also got wrong, for free.
+  Kappa strips that credit out and reports **0.040** — no agreement beyond
+  chance. Always read agreement against the base rate.
+* **`kv3` and `w4-g128+kv4` are not serving configs for this model.** They keep
+  2 and 5 of the 79 questions the FP16 model answered correctly. Nobody ships
+  that. The probe collapse at those configs is real but confounded: everything
+  collapsed, not just the probe.
+* **`w4-g128` is the row that matters**, because it is a config teams actually
+  deploy. The model stays usable and still loses **44% of the answers it had
+  right** (79 → 44), changes **90% of its answers verbatim**, and flips **12.7%
+  of correctness labels** — while the probe reading it loses 29% of its
+  above-chance margin and flips 30% of its own decisions.
+* **The probe is less stable than its target.** At `w4-g128`, 12.7% of labels
+  move but 30% of probe decisions do. Probe drift is not merely inherited from
+  target drift; the probe adds instability of its own.
+
+The honest consequence for the headline result: at aggressive configs, probe
+degradation and model collapse are entangled, and this repo does not separate
+them. `kv4` alone was not measured for label drift, so its −0.136 ΔAUROC sits in
+that unresolved zone. The clean claim is the `w4-g128` one, where the model is
+demonstrably still working.
 
 ## What the synthetic backend got wrong
 
@@ -286,10 +330,13 @@ docs/                  methodology and the vLLM integration path
   would collapse the task on a small model. Lenient matching over-credits, which
   biases *against* finding probe signal — the safe direction — but if you want
   to trust the absolute AUROC, audit the saved `model_answer` field first.
-* **Label drift is measured, not solved.** Quantization changes which questions
-  the model fails. The sweep holds labels at FP16 so ΔAUROC isolates the probe;
+* **Label drift is measured, not solved, and the two failures are entangled at
+  aggressive configs.** Quantization changes which questions the model fails.
+  The sweep holds labels at FP16 so ΔAUROC isolates the probe;
   `scripts/measure_label_drift.py` quantifies the other half separately. Nothing
-  here combines them into one number, because they are different failures.
+  combines them into one number, because they are different failures — but at
+  `kv3` the model is destroyed, so the probe collapse there cannot be cleanly
+  attributed. Only three configs were measured for drift; `kv4` was not.
 * **Templated tasks saturate.** `refusal` and `injection` hit AUROC 1.000 on a
   real model and are useless for measuring robustness there. They are kept
   because they are cheap, identical across models, and make the ceiling effect

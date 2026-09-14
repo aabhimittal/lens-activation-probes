@@ -1,0 +1,51 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "n": 400,
+  "rows": [
+    {
+      "spec": "fp16",
+      "error_rate": 0.8025,
+      "label_agreement": 1.0,
+      "answer_exact_match": 1.0,
+      "n": 400,
+      "kappa": 1.0,
+      "was_correct": 79,
+      "kept_correct": 79,
+      "derived_from_rates": false
+    },
+    {
+      "spec": "w4-g128",
+      "error_rate": 0.85,
+      "label_agreement": 0.8725,
+      "answer_exact_match": 0.1025,
+      "n": 400,
+      "kappa": 0.5577,
+      "was_correct": 79,
+      "kept_correct": 44,
+      "derived_from_rates": true
+    },
+    {
+      "spec": "kv3",
+      "error_rate": 0.995,
+      "label_agreement": 0.8075,
+      "answer_exact_match": 0.0,
+      "n": 400,
+      "kappa": 0.04,
+      "was_correct": 79,
+      "kept_correct": 2,
+      "derived_from_rates": true
+    },
+    {
+      "spec": "w4-g128+kv4",
+      "error_rate": 0.98,
+      "label_agreement": 0.8075,
+      "answer_exact_match": 0.0,
+      "n": 400,
+      "kappa": 0.0816,
+      "was_correct": 79,
+      "kept_correct": 5,
+      "derived_from_rates": true
+    }
+  ],
+  "note": "kappa/kept_correct for quantized rows were derived from the exactly-determined 2x2 confusion (error rates + agreement) after the run; label_drift() now computes them directly from the label arrays."
+}
