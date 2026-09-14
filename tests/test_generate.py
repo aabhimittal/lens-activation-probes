@@ -113,7 +113,7 @@ def test_label_drift_reports_agreement_against_the_fp16_label_set(monkeypatch):
         return ["gold" if i < 4 else "wrong" for i in range(len(ps))]
 
     monkeypatch.setattr(G, "generate_answers", fake_gen)
-    be = type("B", (), {"restore_weights": lambda self: None})()
+    be = type("B", (), {"restore_weights": lambda self, drop=False: None})()
     rows = G.label_drift(be, prompts, aliases, [SPECS_BY_NAME["w4-g128"]], verbose=False)
 
     assert calls == ["fp16", "w4-g128"]
@@ -128,7 +128,7 @@ def test_label_drift_skips_the_baseline_spec(monkeypatch):
     from lens.quant import SPECS_BY_NAME
     monkeypatch.setattr(G, "generate_answers",
                         lambda be, ps, mnt, batch_size=None, spec=None: ["gold"] * len(ps))
-    be = type("B", (), {"restore_weights": lambda self: None})()
+    be = type("B", (), {"restore_weights": lambda self, drop=False: None})()
     rows = G.label_drift(be, ["p"] * 4, [["gold"]] * 4,
                          [SPECS_BY_NAME["fp16"], SPECS_BY_NAME["kv4"]], verbose=False)
     assert [r["spec"] for r in rows] == ["fp16", "kv4"]   # baseline appears once, not twice
