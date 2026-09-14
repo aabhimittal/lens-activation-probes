@@ -6,3 +6,6 @@ results/*
 artifacts/
 *.egg-info/
 !results/synthetic/
+!results/qwen2.5-0.5b/
+!results/smollm2-135m/
+!results/label_drift_*.json

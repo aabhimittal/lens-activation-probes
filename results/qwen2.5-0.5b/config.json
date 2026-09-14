@@ -1,0 +1,188 @@
+{
+  "backend": "hf",
+  "backend_kwargs": {
+    "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "device": "cpu",
+    "dtype": "float32",
+    "batch_size": 24,
+    "max_len": 256
+  },
+  "tasks": [
+    "data/hallucination_qwen2.5-0.5b.jsonl",
+    "refusal",
+    "injection"
+  ],
+  "layers": [
+    6,
+    12,
+    18,
+    21
+  ],
+  "probes": [
+    "logistic",
+    "meandiff"
+  ],
+  "specs": [
+    {
+      "name": "fp16",
+      "weight_bits": null,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": null,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "baseline"
+      ]
+    },
+    {
+      "name": "w8-g128",
+      "weight_bits": 8,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": null,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "weight"
+      ]
+    },
+    {
+      "name": "w4-g128",
+      "weight_bits": 4,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": null,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "weight"
+      ]
+    },
+    {
+      "name": "w4-g32",
+      "weight_bits": 4,
+      "weight_group": 32,
+      "weight_scheme": "affine",
+      "kv_bits": null,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "weight"
+      ]
+    },
+    {
+      "name": "nf4-g64",
+      "weight_bits": 4,
+      "weight_group": 64,
+      "weight_scheme": "nf4",
+      "kv_bits": null,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "weight"
+      ]
+    },
+    {
+      "name": "w3-g128",
+      "weight_bits": 3,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": null,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "weight",
+        "aggressive"
+      ]
+    },
+    {
+      "name": "kv8",
+      "weight_bits": null,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": 8,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "kv"
+      ]
+    },
+    {
+      "name": "kv4",
+      "weight_bits": null,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": 4,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "kv"
+      ]
+    },
+    {
+      "name": "kv3",
+      "weight_bits": null,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": 3,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "kv",
+        "aggressive"
+      ]
+    },
+    {
+      "name": "w4-g128+kv4",
+      "weight_bits": 4,
+      "weight_group": 128,
+      "weight_scheme": "affine",
+      "kv_bits": 4,
+      "kv_group": -1,
+      "kv_scheme": "affine",
+      "act_bits": null,
+      "act_group": -1,
+      "act_scheme": "symmetric",
+      "tags": [
+        "combined"
+      ]
+    }
+  ],
+  "n_examples": 400,
+  "pooling": "last",
+  "test_frac": 0.3,
+  "split_by_template": true,
+  "calib_n": 64,
+  "seed": 0,
+  "threshold": 0.5,
+  "bootstrap": 200,
+  "backend_name": "Qwen/Qwen2.5-0.5B-Instruct"
+}
