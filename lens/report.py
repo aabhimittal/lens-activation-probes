@@ -160,6 +160,54 @@ def model_compare_table(rows: list[dict], probe: str = "logistic") -> str:
     return _table(["serving config"] + [f"{m} (ΔAUROC / flip)" for m in have], body)
 
 
+def entanglement_table(rows: list[dict], drift: list[dict], task: str = None,
+                      probe: str = "logistic", health_floor: float = 0.8) -> str:
+    """Join probe degradation against model health, per serving config.
+
+    Without this join, an aggressive config reports a large ΔAUROC and it is
+    impossible to say whether the probe became unreliable or the model simply
+    stopped working. Those are different findings with different consequences:
+    the first says "do not trust probes under quantization", the second says
+    "do not deploy this config at all", and only the first is about probes.
+
+    `health` is the fraction of the answers FP16 got right that survive the
+    config. A config the model no longer survives cannot support a claim about
+    probes, so the summary line reports mean ΔAUROC restricted to configs whose
+    health clears `health_floor` -- the confound-free number.
+    """
+    from .quant import SPECS_BY_NAME
+
+    def is_baseline(name: str) -> bool:
+        spec = SPECS_BY_NAME.get(name)
+        return spec.is_baseline if spec is not None else name == "fp16"
+
+    by_spec = {d["spec"]: d for d in drift}
+    sel = [r for r in rows if r["probe"] == probe and (task is None or task in r["task"])]
+    agg = {r["spec"]: r for r in aggregate(sel, keys=("spec",))}
+    body, clean = [], []
+    for spec, d in by_spec.items():
+        r = agg.get(spec)
+        if r is None:
+            continue
+        was, kept = d.get("was_correct") or 0, d.get("kept_correct") or 0
+        health = kept / was if was else float("nan")
+        verdict = ("usable" if health >= health_floor
+                   else "degraded" if health >= 0.4 else "broken")
+        if verdict == "usable" and not is_baseline(spec):
+            clean.append(r["delta_auroc"])
+        body.append([spec, _fmt(r["delta_auroc"]), _fmt(r["score_flip_rate"]),
+                     _fmt(d["error_rate"]), f"{kept}/{was}", _fmt(health),
+                     _fmt(d.get("kappa")), verdict])
+    table = _table(["serving config", "ΔAUROC", "probe flip", "model error",
+                    "kept correct", "health", "kappa", "model verdict"], body)
+    if clean:
+        table += (f"\n\nMean ΔAUROC over configs the model still survives "
+                  f"(health >= {health_floor}): **{_fmt(mean(clean))}** over "
+                  f"{len(clean)} configs. This is the number that is about probes "
+                  f"rather than about broken models.")
+    return table
+
+
 def build_report(rows: list[dict], title: str = "LENS sweep") -> str:
     probes = sorted({r["probe"] for r in rows})
     parts = [f"# {title}", "",
