@@ -1,0 +1,106 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "n": 400,
+  "rows": [
+    {
+      "spec": "fp16",
+      "error_rate": 0.8025,
+      "label_agreement": 1.0,
+      "kappa": 1.0,
+      "answer_exact_match": 1.0,
+      "n": 400,
+      "kept_correct": 79,
+      "was_correct": 79
+    },
+    {
+      "spec": "w8-g128",
+      "error_rate": 0.7925,
+      "label_agreement": 0.99,
+      "kappa": 0.9690438416592501,
+      "was_correct": 79,
+      "kept_correct": 79,
+      "answer_exact_match": 0.855,
+      "n": 400
+    },
+    {
+      "spec": "w4-g128",
+      "error_rate": 0.85,
+      "label_agreement": 0.8725,
+      "kappa": 0.5576756287944494,
+      "was_correct": 79,
+      "kept_correct": 44,
+      "answer_exact_match": 0.1025,
+      "n": 400
+    },
+    {
+      "spec": "w4-g32",
+      "error_rate": 0.8375,
+      "label_agreement": 0.905,
+      "kappa": 0.6788506232833298,
+      "was_correct": 79,
+      "kept_correct": 53,
+      "answer_exact_match": 0.185,
+      "n": 400
+    },
+    {
+      "spec": "nf4-g64",
+      "error_rate": 0.855,
+      "label_agreement": 0.8925,
+      "kappa": 0.6231045665702515,
+      "was_correct": 79,
+      "kept_correct": 47,
+      "answer_exact_match": 0.1025,
+      "n": 400
+    },
+    {
+      "spec": "w3-g128",
+      "error_rate": 0.985,
+      "label_agreement": 0.7975,
+      "kappa": 0.019726491589011495,
+      "was_correct": 79,
+      "kept_correct": 2,
+      "answer_exact_match": 0.0,
+      "n": 400
+    },
+    {
+      "spec": "kv8",
+      "error_rate": 0.8025,
+      "label_agreement": 0.92,
+      "kappa": 0.7476241176702553,
+      "was_correct": 79,
+      "kept_correct": 63,
+      "answer_exact_match": 0.385,
+      "n": 400
+    },
+    {
+      "spec": "kv4",
+      "error_rate": 0.9475,
+      "label_agreement": 0.82,
+      "kappa": 0.21487378005561264,
+      "was_correct": 79,
+      "kept_correct": 14,
+      "answer_exact_match": 0.005,
+      "n": 400
+    },
+    {
+      "spec": "kv3",
+      "error_rate": 0.995,
+      "label_agreement": 0.8075,
+      "kappa": 0.040019947637451446,
+      "was_correct": 79,
+      "kept_correct": 2,
+      "answer_exact_match": 0.0,
+      "n": 400
+    },
+    {
+      "spec": "w4-g128+kv4",
+      "error_rate": 0.98,
+      "label_agreement": 0.8075,
+      "kappa": 0.08158396946564887,
+      "was_correct": 79,
+      "kept_correct": 5,
+      "answer_exact_match": 0.0,
+      "n": 400
+    }
+  ]
+}
