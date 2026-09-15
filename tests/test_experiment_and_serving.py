@@ -88,3 +88,23 @@ def test_model_compare_table_appears_only_with_two_models():
     table = model_compare_table(rows + other)
     assert "synthetic" in table and "other" in table
     assert "w4-g128" in table
+
+
+def test_entanglement_table_separates_probe_failure_from_model_collapse():
+    """The whole point of the join: a config where the model is destroyed must
+    not be allowed to contribute to a claim about probe robustness."""
+    from lens.report import entanglement_table
+    rows = run_sweep(cfg(specs=["fp16", "w4-g128", "kv3"]), verbose=False)
+    drift = [
+        {"spec": "fp16", "error_rate": 0.8, "kappa": 1.0, "was_correct": 80, "kept_correct": 80},
+        {"spec": "w4-g128", "error_rate": 0.85, "kappa": 0.56, "was_correct": 80,
+         "kept_correct": 72},                       # healthy: 0.90
+        {"spec": "kv3", "error_rate": 0.99, "kappa": 0.04, "was_correct": 80,
+         "kept_correct": 2},                        # broken: 0.025
+    ]
+    t = entanglement_table(rows, drift)
+    assert "usable" in t and "broken" in t
+    assert "72/80" in t and "2/80" in t
+    # The clean average must be taken over the surviving configs only, so the
+    # broken one cannot drag the headline number.
+    assert "over 1 configs" in t

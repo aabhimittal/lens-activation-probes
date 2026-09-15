@@ -48,6 +48,12 @@ def cmd_sweep(a) -> int:
 def cmd_report(a) -> int:
     rows = [r for f in a.results for r in load_results(f)]
     md = build_report(rows, title=a.title)
+    if a.drift:
+        from .report import entanglement_table
+        drift = json.loads(Path(a.drift).read_text())["rows"]
+        md += ("\n\n## Probe degradation vs model collapse\n\n"
+               + entanglement_table(rows, drift, task=a.drift_task,
+                                    health_floor=a.health_floor) + "\n")
     if a.out:
         Path(a.out).write_text(md + "\n")
     print(md)
@@ -133,6 +139,12 @@ def main(argv=None) -> int:
     r.add_argument("results", nargs="+", help="one or more results.jsonl to merge")
     r.add_argument("--out")
     r.add_argument("--title", default="LENS sweep")
+    r.add_argument("--drift", help="label-drift JSON to join against, per config")
+    r.add_argument("--drift-task", dest="drift_task",
+                   help="substring of the task the drift labels belong to")
+    r.add_argument("--health-floor", dest="health_floor", type=float, default=0.8,
+                   help="fraction of FP16-correct answers a config must retain "
+                        "to count toward the confound-free average")
     r.set_defaults(fn=cmd_report)
 
     e = sub.add_parser("export", help="train one probe and write a serving bundle")

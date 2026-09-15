@@ -161,47 +161,95 @@ token, whether this model is about to get a TriviaQA question wrong.
   worse than an obviously broken one, because nothing on a dashboard looks
   wrong. Never accept ECE as the robustness metric.
 
-## Label drift: the model moves too
+## Label drift, and separating two different failures
 
 The sweep freezes labels at FP16 so ΔAUROC isolates probe degradation. That is
-the right way to measure a probe, and it hides the other half of the problem: in
-production the **quantized** model is the one generating. If it fails on a
-different set of inputs, a perfectly robust probe still describes a system that
-no longer exists.
+the right way to measure a probe, and on its own it cannot tell you whether a
+large ΔAUROC means the probe became unreliable or the model simply stopped
+working. Those are different findings — "do not trust probes under
+quantization" versus "do not deploy this config at all" — and only the first is
+about probes.
 
-Same 400 TriviaQA questions, answers regenerated under each config, graded
-identically (`scripts/measure_label_drift.py`):
+So every config is also re-run generatively: the same 400 TriviaQA questions,
+answered by that serving config, graded identically. **Health** is the fraction
+of the answers FP16 got right that survive.
 
-| serving config | error rate | label agreement | kappa | kept correct | identical answers |
-|---|---|---|---|---|---|
-| fp16 | 0.802 | — | — | 79/79 | — |
-| w4-g128 | 0.850 | 0.873 | 0.558 | 44/79 | 0.102 |
-| w4-g128+kv4 | 0.980 | 0.807 | 0.082 | 5/79 | 0.000 |
-| kv3 | 0.995 | 0.807 | 0.040 | 2/79 | 0.000 |
+| serving config | ΔAUROC | probe flip | model error | kept correct | health | kappa | verdict |
+|---|---|---|---|---|---|---|---|
+| fp16 | 0.000 | 0.000 | 0.802 | 79/79 | 1.000 | 1.000 | usable |
+| w8-g128 | +0.002 | 0.032 | 0.792 | 79/79 | 1.000 | 0.969 | usable |
+| kv8 | −0.046 | 0.212 | 0.802 | 63/79 | 0.797 | 0.748 | degraded |
+| w4-g32 | −0.064 | 0.309 | 0.838 | 53/79 | 0.671 | 0.679 | degraded |
+| nf4-g64 | −0.009 | 0.317 | 0.855 | 47/79 | 0.595 | 0.623 | degraded |
+| w4-g128 | −0.060 | 0.303 | 0.850 | 44/79 | 0.557 | 0.558 | degraded |
+| kv4 | −0.136 | 0.452 | 0.948 | 14/79 | 0.177 | 0.215 | broken |
+| w4-g128+kv4 | −0.193 | 0.481 | 0.980 | 5/79 | 0.063 | 0.082 | broken |
+| w3-g128 | −0.170 | 0.447 | 0.985 | 2/79 | 0.025 | 0.020 | broken |
+| kv3 | −0.233 | 0.498 | 0.995 | 2/79 | 0.025 | 0.040 | broken |
 
-* **Raw agreement lies when the base rate is extreme.** `kv3` shows 0.807
-  agreement, which looks tolerable until you notice the model is wrong on 99.5%
-  of questions: it agrees with FP16 on everything FP16 also got wrong, for free.
-  Kappa strips that credit out and reports **0.040** — no agreement beyond
-  chance. Always read agreement against the base rate.
-* **`kv3` and `w4-g128+kv4` are not serving configs for this model.** They keep
-  2 and 5 of the 79 questions the FP16 model answered correctly. Nobody ships
-  that. The probe collapse at those configs is real but confounded: everything
-  collapsed, not just the probe.
-* **`w4-g128` is the row that matters**, because it is a config teams actually
-  deploy. The model stays usable and still loses **44% of the answers it had
-  right** (79 → 44), changes **90% of its answers verbatim**, and flips **12.7%
-  of correctness labels** — while the probe reading it loses 29% of its
-  above-chance margin and flips 30% of its own decisions.
-* **The probe is less stable than its target.** At `w4-g128`, 12.7% of labels
-  move but 30% of probe decisions do. Probe drift is not merely inherited from
-  target drift; the probe adds instability of its own.
+### The confound is real, and it is mostly dominant
 
-The honest consequence for the headline result: at aggressive configs, probe
-degradation and model collapse are entangled, and this repo does not separate
-them. `kv4` alone was not measured for label drift, so its −0.136 ΔAUROC sits in
-that unresolved zone. The clean claim is the `w4-g128` one, where the model is
-demonstrably still working.
+Health and ΔAUROC move together down the table. Only **one** quantized config —
+`w8-g128` — leaves the model fully intact, and there the probe is intact too
+(+0.002). Every config aggressive enough to move the probe has already damaged
+the model.
+
+So the honest version of the headline is narrow: on a 0.5B model, *"probes
+survive quantization" is only demonstrable at 8-bit weights.* Averaging ΔAUROC
+over "healthy" configs gives a clean number resting on a single config, which is
+not a result. Reporting it as one would be false precision.
+
+### But the confound is not total — and that is the finding
+
+Compare `nf4-g64` against `w4-g128`. The model is damaged **the same amount** by
+both (health 0.595 vs 0.557; kappa 0.623 vs 0.558). The probe is not: ΔAUROC
+−0.009 versus −0.060, nearly sevenfold. `w4-g32` sharpens it further — a
+*healthier* model than `nf4-g64` (0.671 vs 0.595) and a *worse* probe (−0.064 vs
+−0.009).
+
+Matched model damage, very different probe damage. Probe degradation is
+therefore not a readout of model degradation: **the quantizer's geometry matters
+to the probe independently of what it does to output quality.** This does not
+depend on any health threshold, which is why it is the claim worth keeping.
+
+The practical reading: if you run probes as serving-time metrics, the choice
+between NF4 and INT4-affine at the same bit width is not a wash even when your
+accuracy benchmark says it is.
+
+### Aggregate accuracy is blind to behavioural churn
+
+`kv8` has an error rate of **0.802 — identical to FP16 to three decimals.** Any
+accuracy benchmark calls it lossless. It is not: it keeps only 63 of the 79
+questions FP16 answered correctly, changes **62% of its answers verbatim**, and
+costs the probe −0.046 AUROC with 21% of decisions flipping. It trades correct
+answers for different correct answers, and an aggregate metric cannot see the
+trade.
+
+If you validate a quantization config by benchmark score alone, this is the
+failure mode you will ship.
+
+### Ranking can hold while decisions do not
+
+`nf4-g64` loses essentially no AUROC (−0.009) and still flips **32% of
+decisions** at the deployed threshold. The rank/threshold split from the
+synthetic sweep survives on a real model with a real task — it was the *ordering
+of configs* that did not.
+
+Raw agreement is not usable here without the correction: `kv3` shows 0.807
+agreement, which looks tolerable until you notice the model is wrong on 99.5% of
+questions and is agreeing with FP16 on everything FP16 also got wrong, for free.
+Kappa strips that credit and reports 0.040.
+
+Reproduce with:
+
+```bash
+python scripts/measure_label_drift.py --model Qwen/Qwen2.5-0.5B-Instruct \
+    --device cpu --dtype float32 --n 400 \
+    --specs w8-g128 w4-g128 w4-g32 nf4-g64 w3-g128 kv8 kv4 kv3 w4-g128+kv4 \
+    --out results/label_drift_all_qwen2.5-0.5b.json
+lens report results/qwen2.5-0.5b/results.jsonl \
+    --drift results/label_drift_all_qwen2.5-0.5b.json --drift-task halluc
+```
 
 ## What the synthetic backend got wrong
 
@@ -330,13 +378,13 @@ docs/                  methodology and the vLLM integration path
   would collapse the task on a small model. Lenient matching over-credits, which
   biases *against* finding probe signal — the safe direction — but if you want
   to trust the absolute AUROC, audit the saved `model_answer` field first.
-* **Label drift is measured, not solved, and the two failures are entangled at
-  aggressive configs.** Quantization changes which questions the model fails.
-  The sweep holds labels at FP16 so ΔAUROC isolates the probe;
-  `scripts/measure_label_drift.py` quantifies the other half separately. Nothing
-  combines them into one number, because they are different failures — but at
-  `kv3` the model is destroyed, so the probe collapse there cannot be cleanly
-  attributed. Only three configs were measured for drift; `kv4` was not.
+* **The confound is bounded, not eliminated.** Every config is now measured for
+  both probe degradation and model health, and only `w8-g128` leaves the model
+  intact — so a "clean" average over healthy configs would rest on one config
+  and is not reported as a result. The separable claim comes from matched pairs
+  (`nf4-g64` vs `w4-g128`: same model damage, sevenfold different probe damage),
+  which needs no threshold. One model, one task, 400 questions; the pairing
+  should be replicated at another scale before being leaned on.
 * **Templated tasks saturate.** `refusal` and `injection` hit AUROC 1.000 on a
   real model and are useless for measuring robustness there. They are kept
   because they are cheap, identical across models, and make the ceiling effect
